@@ -1,0 +1,85 @@
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(pander)
+library(dplyr)
+
+##  update these to the current report year dates
+year_start <- ymd("20200101")
+year_end <- ymd("20201231")
+
+##  Before loading this in, remove spaces in headers
+##  find and load in the program dashboard file
+all_data <- file.choose()
+
+ee_during_period <- read_excel(all_data, sheet = 1) %>%
+  rename(ClientId = EntryExitClientId) %>%
+  group_by(EntryExitGroupUID) %>%
+  mutate(EntryExitExitDate = as.Date(EntryExitExitDate),
+         max_entry_age = max(ClientAgeatEntry),
+         min_entry_age = min(ClientAgeatEntry)) %>%
+  ungroup()
+
+demographic_data <- read_excel(all_data, sheet = 2) %>%
+  rename(ClientId = ClientUid)
+
+##  set up system map calculations
+system_map_numbers <- function(df, column, title)
+{
+  entered_shelter <- nrow(distinct(df %>%
+                                     filter(EntryExitProviderProgramTypeCode == "Emergency Shelter (HUD)" &
+                                              EntryExitEntryDate >= year_start &
+                                              EntryExitEntryDate <= year_end)
+                                   , !!column))
+  diverted <- nrow(distinct(df %>%
+                                     filter(EntryExitProviderProgramTypeCode == "Diversion" &
+                                              ExitDestinationType == "Permanent Situation" &
+                                              EntryExitExitDate >= year_start &
+                                              EntryExitExitDate <= year_end)
+                                   , !!column))
+  in_ce <- nrow(distinct(df %>%
+                              filter(EntryExitProviderProgramTypeCode == "Coordinated Entry (HUD)")
+                            , !!column))
+  entered_housing_program <- nrow(distinct(df %>%
+                                     filter(EntryExitProviderProgramTypeCode %in% c("Transitional housing (HUD)",
+                                                                                    "PH - Rapid Re-Housing (HUD)",
+                                                                                    "PH - Permanent Supportive Housing (disability required for entry) (HUD)") &
+                                              EntryExitEntryDate >= year_start &
+                                              EntryExitEntryDate <= year_end)
+                                   , !!column))
+  homelessness_prevented <- nrow(distinct(df %>%
+                              filter(EntryExitProviderProgramTypeCode == "Homelessness Prevention (HUD)" &
+                                       ExitDestinationType == "Permanent Situation" &
+                                       EntryExitExitDate >= year_start &
+                                       EntryExitExitDate <= year_end)
+                            , !!column))
+  
+  cat("\n", title,
+      "\nEntered shelter: ", paste0(entered_shelter),
+      "\nHoused through diversion: ", paste0(diverted),
+      "\nWere open in CE: ", paste0(in_ce),
+      "\nEntered TH/RRH/PSH program: ", paste0(entered_housing_program),
+      "\nStabilized through prevention: ", paste0(homelessness_prevented), "\n")
+}
+
+##  run system number calculations
+system_map_numbers(ee_during_period, quo(VARCreatedHouseholdID), "All Households")
+
+system_map_numbers(ee_during_period %>%
+                     filter(min_entry_age < 18)
+                   , quo(VARCreatedHouseholdID), "Families With Children")
+
+system_map_numbers(ee_during_period %>%
+                     inner_join(demographic_data %>%
+                                  filter(VeteranStatus == "Yes (HUD)"),
+                                by = "ClientId")
+                   , quo(ClientId), "Veterans")
+
+system_map_numbers(ee_during_period %>%
+                     filter(max_entry_age >= 18 &
+                              max_entry_age <= 24)
+                   , quo(VARCreatedHouseholdID), "Youth Households")
+
+system_map_numbers(ee_during_period %>%
+                     filter(ClientAgeatEntry >= 55)
+                   , quo(ClientId), "Seniors 55+")

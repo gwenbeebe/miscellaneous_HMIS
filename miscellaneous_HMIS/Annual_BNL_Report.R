@@ -142,6 +142,8 @@ age_table <- by_name_list %>%
   group_by(age_bucket) %>%
   summarise(people = n())
 
+
+##  bucket clients by race
 race_table <- by_name_list %>%
   select(ClientId, CensusRace) %>%
   mutate(CensusRace = factor(CensusRace,
