@@ -19,6 +19,7 @@ age <- function(from, to) {
          age - 1, age)
 }
 
+##  Runs on BNL v1.1 - Demos and Households
 ##  Before loading this in, merge and de-dupe 
 ##  the two tables on the households tab
 ##  and remove spaces in headers

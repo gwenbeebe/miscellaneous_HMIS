@@ -8,6 +8,7 @@ library(dplyr)
 year_start <- ymd("20200101")
 year_end <- ymd("20201231")
 
+##  Runs on Program Dashboard v1.5
 ##  Before loading this in, remove spaces in headers
 ##  find and load in the program dashboard file
 all_data <- file.choose()
@@ -22,6 +23,8 @@ ee_during_period <- read_excel(all_data, sheet = 1) %>%
 
 demographic_data <- read_excel(all_data, sheet = 2) %>%
   rename(ClientId = ClientUid)
+
+program_data <- read_excel(all_data, sheet = 3)
 
 ##  set up system map calculations
 system_map_numbers <- function(df, column, title)
@@ -83,3 +86,25 @@ system_map_numbers(ee_during_period %>%
 system_map_numbers(ee_during_period %>%
                      filter(ClientAgeatEntry >= 55)
                    , quo(ClientId), "Seniors 55+")
+
+##  get program numbers
+housing_program_entries <- ee_during_period %>%
+  filter(EntryExitProviderProgramTypeCode %in% c("Transitional housing (HUD)",
+                                                 "PH - Rapid Re-Housing (HUD)",
+                                                 "PH - Permanent Supportive Housing (disability required for entry) (HUD)") &
+           EntryExitEntryDate >= year_start &
+           EntryExitEntryDate <= year_end) %>%
+  left_join(program_data, by = c("EntryExitProviderId" = "Provider"))
+
+agency_count <- nrow(distinct(housing_program_entries, Agency))
+program_count <- nrow(distinct(housing_program_entries, EntryExitProviderId))
+household_count <- nrow(distinct(housing_program_entries, VARCreatedHouseholdID))  ## this will match number from above
+
+cat(paste0(agency_count), "agencies administered", paste0(program_count),
+    "programs that entered", paste0(household_count), "households in 2020.")
+
+housing_program_types <- housing_program_entries %>%
+  select(EntryExitProviderId, EntryExitProviderProgramTypeCode) %>%
+  distinct() %>%
+  group_by(EntryExitProviderProgramTypeCode) %>%
+  summarise(programs = n())
