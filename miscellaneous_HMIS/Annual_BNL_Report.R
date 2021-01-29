@@ -83,11 +83,21 @@ seniors <- nrow(distinct(by_name_list %>%
                                           filter(age_at_year_end >= 55)
                                         , ClientId))
 
+BIPOC_households <- nrow(distinct(by_name_list %>%
+                                    filter((CensusRace %in% c("Native Hawaiian or Other Pacific Islander (HUD)","Two or More Races",
+                                                             "Other", "Black or African American (HUD)", "American Indian or Alaska Native (HUD)",
+                                                             "Asian (HUD)") |
+                                             Ethnicity == "Hispanic/Latino (HUD)") &
+                                    age_at_year_end >= 18) %>%
+                                    left_join(by_name_list_hhs, by = "ClientId")
+                          , HouseholdId))
+
 cat("\nTotal households: ", paste0(total_households),
-               "\nFamilies: ", paste0(families_with_children),
-               "\nVeterans: ", paste0(veterans),
-               "\nYouth households: ", paste0(youth_households),
-               "\nSeniors 55+: ", paste0(seniors), "\n")
+    "\nFamilies: ", paste0(families_with_children),
+    "\nVeterans: ", paste0(veterans),
+    "\nYouth households: ", paste0(youth_households),
+    "\nSeniors 55+: ", paste0(seniors),
+    "\nBIPOC Households: ", paste0(BIPOC_households), "\n")
 
 ##  get client counts
 all_people <- nrow(distinct(by_name_list, ClientId))

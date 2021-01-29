@@ -34,6 +34,11 @@ system_map_numbers <- function(df, column, title)
                                               EntryExitEntryDate >= year_start &
                                               EntryExitEntryDate <= year_end)
                                    , !!column))
+  entered_diversion <- nrow(distinct(df %>%
+                                     filter(EntryExitProviderProgramTypeCode == "Diversion" &
+                                              EntryExitEntryDate >= year_start &
+                                              EntryExitEntryDate <= year_end)
+                                   , !!column))
   diverted <- nrow(distinct(df %>%
                                      filter(EntryExitProviderProgramTypeCode == "Diversion" &
                                               ExitDestinationType == "Permanent Situation" &
@@ -59,6 +64,7 @@ system_map_numbers <- function(df, column, title)
   
   cat("\n", title,
       "\nEntered shelter: ", paste0(entered_shelter),
+      "\nEntered diversion: ", paste0(entered_diversion),
       "\nHoused through diversion: ", paste0(diverted),
       "\nWere open in CE: ", paste0(in_ce),
       "\nEntered TH/RRH/PSH program: ", paste0(entered_housing_program),
@@ -87,6 +93,17 @@ system_map_numbers(ee_during_period %>%
                      filter(ClientAgeatEntry >= 55)
                    , quo(ClientId), "Seniors 55+")
 
+system_map_numbers(ee_during_period %>%
+                     filter(ClientAgeatEntry >= 18) %>%
+                     inner_join(demographic_data %>%
+                                  filter(PrimaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
+                                                           "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
+                                           SecondaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
+                                                              "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
+                                           Ethnicity == "Hispanic/Latino (HUD)"),
+                                by = "ClientId")
+                   , quo(VARCreatedHouseholdID), "BIPOC Households")
+
 ##  get program numbers
 housing_program_entries <- ee_during_period %>%
   filter(EntryExitProviderProgramTypeCode %in% c("Transitional housing (HUD)",
@@ -108,3 +125,4 @@ housing_program_types <- housing_program_entries %>%
   distinct() %>%
   group_by(EntryExitProviderProgramTypeCode) %>%
   summarise(programs = n())
+
