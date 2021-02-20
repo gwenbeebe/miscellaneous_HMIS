@@ -45,23 +45,100 @@ by_name_list_hhs <-
   read_excel(bnl_data, sheet = 2) %>%
   rename(ClientId = ClientUid)
 
+
+##  get household relationship information from BNL with households joined and de-duped
+hh_relationships <- 
+  read_excel(file.choose(), sheet = 1) %>%
+  rename(ClientId = ClientUid, HouseholdId = EntryExitHouseholdId)
+
+hh_relationships_cleaned <- hh_relationships %>%
+  mutate(RelationshiptoHeadofHousehold = case_when(
+    RelationshiptoHeadofHousehold == "Self (head of household)" ~ "Self", 
+    RelationshiptoHeadofHousehold %in% c("Head of household's child", "non-binary child",
+                                         "daughter", "son", "adult daughter",
+                                         "adult son", "step-son", "step-daughter",
+                                         "son-in-law", "daughter-in-law",
+                                         "child of partner") ~ "Child",
+    RelationshiptoHeadofHousehold %in% c("Head of household's spouse or partner",
+                                         "partner", "husband", "wife") ~ "Partner",
+    RelationshiptoHeadofHousehold %in% c("step-brother", "brother",
+                                         "sister", "step-sister") ~ "Sibling",
+    RelationshiptoHeadofHousehold %in% c("father", "mother", "father-in-law",
+                                         "mother-in-law") ~ "Parent",
+    RelationshiptoHeadofHousehold %in% c("granddaughter", "grandson") ~ "Grandchild",
+    RelationshiptoHeadofHousehold %in% c("grandfather", "grandmother") ~ "Grandparent",
+    RelationshiptoHeadofHousehold %in% c("uncle", "niece", "nephew", "other relative", "cousin",
+                                         "Head of household's other relation member (other relation to head of household)") ~ "Other Relative",
+    RelationshiptoHeadofHousehold %in% c("other non-relative", "unknown", "friend of family", 
+                                         "Data not collected", "Other: non-relation member") |
+      is.na(RelationshiptoHeadofHousehold) ~ "Unknown",
+    TRUE ~ RelationshiptoHeadofHousehold
+  ))
+
 ##  assign each active person to only one household
 ##  if they are in multiple households, assign them to the largest household
 ##  identify youth and family households
-by_name_list_hhs <- by_name_list_hhs %>%
+hold <- by_name_list_hhs
+by_name_list_hhs <- hold %>%
   inner_join(by_name_list %>%
-               select(ClientId, age_at_year_end),
+               select(ClientId, age_at_year_end, Gender),
              by = "ClientId") %>%
+  left_join(hh_relationships_cleaned, by = c("ClientId", "HouseholdId")) %>%
   group_by(HouseholdId) %>%
   mutate(household_size = n(),
          max_household_age = max(age_at_year_end),
-         min_household_age = min(age_at_year_end)) %>%
+         min_household_age = min(age_at_year_end),
+         self_partner_only = min(if_else(RelationshiptoHeadofHousehold %in% c("Self", "Partner"), 1, 0)),
+         has_child = max(if_else(RelationshiptoHeadofHousehold == "Child", 1, 0)),
+         has_parent = max(if_else(RelationshiptoHeadofHousehold == "Parent", 1, 0)),
+         all_hoh = min(if_else(RelationshiptoHeadofHousehold == "Self", 1, 0)),
+         spans_three_gens = max(if_else(RelationshiptoHeadofHousehold %in% c("Grandchild", "Grandparent"), 1, 0)),
+         has_other_family = max(if_else(RelationshiptoHeadofHousehold %in% c("Sibling", "Other Relative"), 1, 0))) %>%
   ungroup() %>%
   arrange(desc(household_size)) %>%
   group_by(ClientId) %>%
   slice(1L) %>%
   ungroup() %>%
   select(-age_at_year_end)
+
+##  Use this to check for unaccounted-for relationship values
+unique(hh_relationships_cleaned$RelationshiptoHeadofHousehold)
+
+household_types <- by_name_list_hhs %>%
+  mutate(HouseholdType = case_when(min_household_age < 18 ~ "Family With Children",
+                                   household_size == 1 & 
+                                     Gender %in% c("Trans Female (MTF or Male to Female)",
+                                                   "Female") ~ "Single Female",
+                                   household_size == 1 & 
+                                     Gender %in% c("Trans Male (FTM or Female to Male)",
+                                                   "Male") ~ "Single Male",
+                                   household_size == 1 & 
+                                     Gender %in% c("Client refused", "Data not collected") |
+                                     is.na(Gender) ~ "Single Person - Gender Unknown",
+                                   household_size == 1 & 
+                                     Gender == "Gender Non-Conforming (i.e. not exclusively male or female)" ~ "Single Non-Binary Person",
+                                   self_partner_only == 1 ~ "Couple",
+                                   min_household_age >= 18 & (has_child == 1 |
+                                                                has_parent == 1 |
+                                                                spans_three_gens == 1) ~ "Household with Adult Child/ren",
+                                   is.na(min_household_age) & (has_child == 1 |
+                                                                has_parent == 1 |
+                                                                 spans_three_gens == 1) ~ "Household with Child/ren, Age Unknown",
+                                   has_other_family == 1 ~ "Other Familial Relationship",
+                                   min_household_age >= 18 ~ "Adults Only, Relationship Unknown",
+                                   TRUE ~ "Cannot Determine"))
+
+check <- household_types %>%
+  filter(HouseholdType == "Cannot Determine") %>%
+  arrange(HouseholdId)
+
+household_types %>% 
+  distinct(HouseholdId, HouseholdType) %>%
+  group_by(HouseholdType) %>%
+  summarise(households = n())
+
+unique(check$Gender)
+
 
 ##  get system map counts
 total_households <- nrow(distinct(by_name_list_hhs, HouseholdId))
