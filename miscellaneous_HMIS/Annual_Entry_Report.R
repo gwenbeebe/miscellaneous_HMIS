@@ -5,15 +5,15 @@ library(pander)
 library(dplyr)
 
 ##  update these to the current report year dates
-year_start <- ymd("20200101")
-year_end <- ymd("20201231")
+year_start <- ymd("20220101")
+year_end <- ymd("20221231")
 
 ##  Runs on Program Dashboard v1.5
-##  Before loading this in, remove spaces in headers
 ##  find and load in the program dashboard file
 all_data <- file.choose()
 
 ee_during_period <- read_excel(all_data, sheet = 1) %>%
+  `colnames<-`(gsub(" ", "", names(.))) %>%
   rename(ClientId = EntryExitClientId) %>%
   group_by(EntryExitGroupUID) %>%
   mutate(EntryExitExitDate = as.Date(EntryExitExitDate),
@@ -22,9 +22,15 @@ ee_during_period <- read_excel(all_data, sheet = 1) %>%
   ungroup()
 
 demographic_data <- read_excel(all_data, sheet = 2) %>%
-  rename(ClientId = ClientUid)
+  `colnames<-`(gsub(" ", "", names(.))) %>%
+  rename(ClientId = ClientUid) %>%
+  arrange(desc(MostRecentAssessmentScore)) %>%
+  group_by(ClientId) %>%
+  slice(1L) %>%
+  ungroup()
 
-program_data <- read_excel(all_data, sheet = 3)
+program_data <- read_excel(all_data, sheet = 3) %>%
+  `colnames<-`(gsub(" ", "", names(.)))
 
 ##  set up system map calculations
 system_map_numbers <- function(df, column, title)
@@ -96,11 +102,17 @@ system_map_numbers(ee_during_period %>%
 system_map_numbers(ee_during_period %>%
                      filter(ClientAgeatEntry >= 18) %>%
                      inner_join(demographic_data %>%
-                                  filter(PrimaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                                           "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                                           SecondaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                                              "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                                           Ethnicity == "Hispanic/Latino (HUD)"),
+                                  filter(PrimaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                                            "Black, African American, or African (HUD)",
+                                                            "Other Multi-Racial", "Other",
+                                                            "American Indian, Alaska Native, or Indigenous (HUD)",
+                                                            "Asian or Asian American (HUD)") |
+                                           SecondaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                                                "Black, African American, or African (HUD)",
+                                                                "Other Multi-Racial", "Other",
+                                                                "American Indian, Alaska Native, or Indigenous (HUD)",
+                                                                "Asian or Asian American (HUD)") |
+                                           Ethnicity == "Hispanic/Latin(a)(o)(x) (HUD)"),
                                 by = "ClientId")
                    , quo(VARCreatedHouseholdID), "BIPOC Households")
 
@@ -111,7 +123,10 @@ housing_program_entries <- ee_during_period %>%
                                                  "PH - Permanent Supportive Housing (disability required for entry) (HUD)") &
            EntryExitEntryDate >= year_start &
            EntryExitEntryDate <= year_end) %>%
-  left_join(program_data, by = c("EntryExitProviderId" = "Provider"))
+  left_join(program_data %>%
+              select(Agency, Provider) %>%
+              distinct(), 
+            by = c("EntryExitProviderId" = "Provider"))
 
 agency_count <- nrow(distinct(housing_program_entries, Agency))
 program_count <- nrow(distinct(housing_program_entries, EntryExitProviderId))

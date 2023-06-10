@@ -20,15 +20,19 @@ age <- function(from, to) {
 all_data <- file.choose()
 
 hmis_call_data <- read_excel(all_data, sheet = 1) %>%
+  `colnames<-`(gsub(" ", "", names(.))) %>%
   mutate(NeedDateAdded = as.Date(NeedDateAdded)) %>%
   filter(ClientUid != 26860)
 
-hmis_living_situations <- read_excel(all_data, sheet = 2)
+hmis_living_situations <- read_excel(all_data, sheet = 2) %>%
+`colnames<-`(gsub(" ", "", names(.)))
 
 hmis_demographics <- read_excel(all_data, sheet = 3) %>%
+  `colnames<-`(gsub(" ", "", names(.))) %>%
   mutate(DateofBirth = as.Date(DateofBirth))
 
 call_data <- read_excel(all_data, sheet = 4) %>%
+  `colnames<-`(gsub(" ", "", names(.))) %>%
   mutate(CallRecordStartDate = as.Date(CallRecordStartDate),
          DateofBirth = as.Date(DateofBirth)) %>%
   filter(ClientID != 26860 & !is.na(NameString))
@@ -43,7 +47,7 @@ hmis_caller_data <- hmis_call_data %>%
     Housed_Status = case_when(
            ## identify those that are definitely literally homeless
            NeedCodeDescription == "Coordinated Entry (all literally homeless)" |
-             FleeingDV == "Yes" |
+             # FleeingDV == "Yes" |
              PriorLivingSituation %in% c("Place not meant for habitation (HUD)", 
                                          "Emergency shelter, incl. hotel/motel paid for w/ ES voucher, or RHY-funded Host Home shelter (HUD)",
                                          "Domestic Violence Situation", "Homeless/on the Street", "Safe Haven (HUD)",
@@ -72,22 +76,28 @@ hmis_caller_data <- hmis_call_data %>%
                                          "Rental by client, with GPD TIP housing subsidy (HUD)", "Interim Housing (HUD) (Retired)")
            ~ "Not Literally Homeless",
            ## identify those that are probably literally homeless
-           NeedCodeDescription %in% c("Housing Related Coordinated Entry", "Emergency Shelter", "Homeless Motel Vouchers",
-                                      "Homeless Safe Parking Programs", "Domestic Violence Shelters",
-                                      ## "Animal Shelters" is an artifact of how some shelter referrals are made
-                                      "Animal Shelters")
-           ~ "Literally Homeless",
+           # NeedCodeDescription %in% c("Housing Related Coordinated Entry", "Emergency Shelter", "Homeless Motel Vouchers",
+           #                            "Homeless Safe Parking Programs", "Domestic Violence Shelters",
+           #                            ## "Animal Shelters" is an artifact of how some shelter referrals are made
+           #                            "Animal Shelters")
+           # ~ "Literally Homeless",
            ## identify those that are probably housed
            NeedCodeDescription %in% c("Rent Payment Assistance", "Homelessness Prevention Programs")
            ~ "Not Literally Homeless",
            ## all others are unknown but marked not literal for these purposes
            TRUE ~ "Not Literally Homeless"
          ),
-         BIPOC_flag = case_when(PrimaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                            "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                           SecondaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                                "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                           Ethnicity == "Hispanic/Latino (HUD)" ~ 1, 
+         BIPOC_flag = case_when(PrimaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                                   "Black, African American, or African (HUD)",
+                                                   "Other Multi-Racial", "Other",
+                                                   "American Indian, Alaska Native, or Indigenous (HUD)",
+                                                   "Asian or Asian American (HUD)") |
+                           SecondaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                                "Black, African American, or African (HUD)",
+                                                "Other Multi-Racial", "Other",
+                                                "American Indian, Alaska Native, or Indigenous (HUD)",
+                                                "Asian or Asian American (HUD)") |
+                           Ethnicity == "Hispanic/Latin(a)(o)(x) (HUD)" ~ 1, 
                            TRUE ~ 0)) %>%
   select(NeedHouseholdId, ClientUid, NeedDateAdded, ClientVeteranStatus, NameString, DateofBirth, Housed_Status, BIPOC_flag, client_requested_shelter)
 
@@ -97,7 +107,7 @@ callpoint_caller_data <- call_data %>%
   mutate(Housed_Status = case_when(
     ## identify those that are definitely literally homeless
     CallRecordCallType == "Coordinated Entry (all literally homeless)" |
-      FleeingDV == "Yes" |
+      # FleeingDV == "Yes" |
       PriorLivingSituation %in% c("Place not meant for habitation (HUD)", 
                                   "Emergency shelter, incl. hotel/motel paid for w/ ES voucher, or RHY-funded Host Home shelter (HUD)",
                                   "Domestic Violence Situation", "Homeless/on the Street", "Safe Haven (HUD)",
@@ -128,25 +138,25 @@ callpoint_caller_data <- call_data %>%
     ## all others are unknown but marked not literal for these purposes
     TRUE ~ "Not Literally Homeless"
   ),
-  BIPOC_flag = case_when(PrimaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                       "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                      SecondaryRace %in% c("Black or African American (HUD)", "Native Hawaiian or Other Pacific Islander (HUD)",
-                                           "Other Multi-Racial", "American Indian or Alaska Native (HUD)", "Other", "Asian (HUD)") |
-                      Ethnicity == "Hispanic/Latino (HUD)" ~ 1, 
+  BIPOC_flag = case_when(PrimaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                            "Black, African American, or African (HUD)",
+                                            "Other Multi-Racial", "Other",
+                                            "American Indian, Alaska Native, or Indigenous (HUD)",
+                                            "Asian or Asian American (HUD)") |
+                      SecondaryRace %in% c("Native Hawaiian or Pacific Islander (HUD)",
+                                           "Black, African American, or African (HUD)",
+                                           "Other Multi-Racial", "Other",
+                                           "American Indian, Alaska Native, or Indigenous (HUD)",
+                                           "Asian or Asian American (HUD)") |
+                      Ethnicity == "Hispanic/Latin(a)(o)(x) (HUD)" ~ 1, 
                     TRUE ~ 0)) %>%
   select(ClientID, CallRecordStartDate, VeteranStatus, NameString, DateofBirth, Housed_Status, BIPOC_flag)
 
-check <- all_caller_data %>%
-  select(NameString, DateofBirth, Housed_Status) %>%
-  distinct() %>%
-  group_by(Housed_Status) %>%
-  summarise(count = n())
-
 ##  join data for more processing
 all_caller_data <- hmis_caller_data %>%
-  # full_join(callpoint_caller_data, by = c("ClientUid" = "ClientID", "NeedDateAdded" = "CallRecordStartDate",
-  #                                         "ClientVeteranStatus" = "VeteranStatus", "NameString", "DateofBirth",
-  #                                         "Housed_Status", "BIPOC_flag")) %>%
+  full_join(callpoint_caller_data, by = c("ClientUid" = "ClientID", "NeedDateAdded" = "CallRecordStartDate",
+                                          "ClientVeteranStatus" = "VeteranStatus", "NameString", "DateofBirth",
+                                          "Housed_Status", "BIPOC_flag")) %>%
   group_by(NameString) %>%
   mutate(DateofBirth = if_else(is.na(DateofBirth),
                                max(if_else(is.na(DateofBirth), ymd("18000101"), DateofBirth)),
@@ -172,6 +182,11 @@ all_caller_data <- hmis_caller_data %>%
   ungroup() %>%
   select(-c(ClientVeteranStatus, NameString, HMIS_ClientID, First_Call_ClientID, DateofBirth))
 
+check <- all_caller_data %>%
+  select(NameString, DateofBirth, Housed_Status) %>%
+  distinct() %>%
+  group_by(Housed_Status) %>%
+  summarise(count = n())
 
 ##  prepare table for summarizing
 for_summary <- all_caller_data %>%
